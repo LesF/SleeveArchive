@@ -1,0 +1,1241 @@
+@page "/"
+@using SleeveArchive.Models
+@using SleeveArchive.Services
+@inject DatabaseService DbService
+@inject MusicBrainzService MbService
+@inject IJSRuntime JS
+
+<main class="app-container">
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="logo-area">
+      <div class="record-logo">
+        <div class="vinyl-grooves"></div>
+        <div class="vinyl-center"></div>
+      </div>
+      <h1>SleeveArchive</h1>
+    </div>
+    <div class="header-right">
+      <button class="add-album-header-btn" @onclick="OpenAddModal" aria-label="Add Album" id="btn-add-album">
+        <span class="btn-icon">＋</span>
+        <span>Add Album</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Toast Notification -->
+  @if (!string.IsNullOrEmpty(toastMessage))
+  {
+    <div class="toast-banner @toastType">
+      <span class="toast-icon">@(toastType == "success" ? "✓" : "ℹ")</span>
+      <span>@toastMessage</span>
+    </div>
+  }
+
+  @if (isLoading)
+  {
+    <!-- Full-page Vinyl Loader -->
+    <div class="loader-container">
+      <div class="vinyl-loader">
+        <div class="vinyl-shine"></div>
+        <div class="vinyl-center-label"></div>
+      </div>
+      <p class="loader-text">Loading record collection...</p>
+    </div>
+  }
+  else if (errorMsg != null)
+  {
+    <!-- Error View -->
+    <div class="error-container">
+      <div class="error-icon">⚠️</div>
+      <h2>Database Error</h2>
+      <p>@errorMsg</p>
+      <button @onclick="ReloadApp" class="retry-btn">Retry Load</button>
+    </div>
+  }
+  else
+  {
+    <!-- Main Content Area -->
+    <div class="content-area">
+      <!-- Sticky Filter Panel -->
+      <section class="filter-panel">
+        <!-- Search Input -->
+        <div class="search-wrapper">
+          <span class="search-icon">🔍</span>
+          <input
+            type="text"
+            placeholder="Search albums or artists..."
+            @bind="SearchQuery"
+            @bind:event="oninput"
+            class="search-input"
+            id="album-search"
+          />
+          @if (!string.IsNullOrEmpty(SearchQuery))
+          {
+            <button
+              @onclick="ClearSearch"
+              class="clear-btn"
+              aria-label="Clear search">✕</button>
+          }
+        </div>
+
+        <!-- Status Filter Dropdown -->
+        <div class="select-wrapper">
+          <label for="status-filter" class="select-label">Status</label>
+          <select
+            id="status-filter"
+            @bind="StatusFilter"
+            class="status-select"
+          >
+            <option value="All">All Statuses</option>
+            <option value="Owned">Owned</option>
+            <option value="Wanted">Wanted</option>
+            <option value="Upgrade wanted">Upgrade wanted</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- Search Stats -->
+      <div class="stats-bar">
+        <span>
+          Showing <strong>@albums.Count</strong> of <strong>@totalCount</strong> albums
+        </span>
+
+        <!-- Page size selector -->
+        <div class="page-size-selector">
+          <label for="page-size">Size:</label>
+          <select id="page-size" @bind="PageSize" class="size-select">
+            <option value="5">5</option>
+            <option value="10">10</option>
+            <option value="20">20</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Albums List View -->
+      @if (albums.Count == 0)
+      {
+        <div class="empty-results">
+          <div class="empty-icon">📭</div>
+          <p>No albums found in your catalog.</p>
+          <button class="empty-action-btn" @onclick="OpenAddModal">Add Your First Album</button>
+        </div>
+      }
+      else
+      {
+        <div class="albums-list">
+          @foreach (var album in albums)
+          {
+            <div class="album-card" @key="album.Id" @onclick="() => OpenAlbumDetails(album)">
+              <!-- Album Cover (Image from MusicBrainz Cover Art Archive with Gradient Fallback) -->
+              <div
+                class="album-cover"
+                style="background: @GetAlbumGradient(album.Title)"
+              >
+                @if (!string.IsNullOrEmpty(album.MusicBrainzId))
+                {
+                  <img
+                    src="https://coverartarchive.org/release/@album.MusicBrainzId/front-250.jpg"
+                    alt="@album.Title cover"
+                    class="album-cover-img"
+                    loading="lazy"
+                    onerror="this.style.display='none';"
+                  />
+                }
+                <div class="vinyl-sleeve-disk"></div>
+                <div class="sleeve-art-overlay">
+                  <span class="album-initial">@album.Title.FirstOrDefault()</span>
+                </div>
+              </div>
+
+              <!-- Album Info -->
+              <div class="album-details">
+                <div class="album-header-row">
+                  <h3 class="album-title" title="@album.Title">@album.Title</h3>
+                  <span
+                    class="status-badge @(album.Status.ToLower().Replace(" ", "-"))"
+                  >
+                    @album.Status
+                  </span>
+                </div>
+                <p class="album-artist" title="@album.Artist">@album.Artist</p>
+
+                <!-- Condition Section (empty if Upgrade wanted) -->
+                @if (album.Status != "Upgrade wanted")
+                {
+                  <div class="conditions-row">
+                    <div class="condition-item">
+                      <span class="cond-label">Vinyl</span>
+                      <div class="stars">
+                        @for (int idx = 0; idx < 5; idx++)
+                        {
+                          var currentIdx = idx;
+                          <span
+                            class="star @(album.VinylCondition.HasValue && currentIdx < album.VinylCondition.Value ? "filled" : "")">★</span>
+                        }
+                      </div>
+                    </div>
+                    <div class="condition-item">
+                      <span class="cond-label">Cover</span>
+                      <div class="stars">
+                        @for (int idx = 0; idx < 5; idx++)
+                        {
+                          var currentIdx = idx;
+                          <span
+                            class="star @(album.CoverCondition.HasValue && currentIdx < album.CoverCondition.Value ? "filled" : "")">★</span>
+                        }
+                      </div>
+                    </div>
+                  </div>
+                }
+                else
+                {
+                  <div class="conditions-empty-placeholder">
+                    <span>Conditions hidden (seeking upgrade)</span>
+                  </div>
+                }
+
+                @if (!string.IsNullOrEmpty(album.MusicBrainzId))
+                {
+                  <div class="mb-tag" title="Linked to MusicBrainz">
+                    <span class="mb-dot"></span> MB Verified
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
+
+      <!-- Pagination Component -->
+      @if (totalPages > 1)
+      {
+        <nav class="pagination" aria-label="Pagination">
+          <button
+            @onclick="PrevPage"
+            disabled="@(currentPage == 1)"
+            class="pag-btn"
+          >
+            ← Prev
+          </button>
+
+          <span class="page-indicator">
+            Page <strong>@currentPage</strong> of <strong>@totalPages</strong>
+          </span>
+
+          <button
+            @onclick="NextPage"
+            disabled="@(currentPage == totalPages)"
+            class="pag-btn"
+          >
+            Next →
+          </button>
+        </nav>
+      }
+    </div>
+  }
+</main>
+
+<!-- ========================================================================= -->
+<!-- ADD ALBUM MODAL (with MusicBrainz search & Cover Art selection) -->
+<!-- ========================================================================= -->
+@if (showAddModal)
+{
+  <div class="modal-overlay" @onclick="CloseAddModal">
+    <div class="modal-card modal-lg" @onclick:stopPropagation="true">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-title-icon">✨</span>
+          <h2>Add New Album</h2>
+        </div>
+        <button class="close-modal-btn" @onclick="CloseAddModal" aria-label="Close">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Step 1: MusicBrainz Live Search -->
+        <div class="form-section">
+          <label class="section-label">1. Search MusicBrainz Database</label>
+          <div class="mb-search-box">
+            <input
+              type="text"
+              class="form-input"
+              placeholder="Search title, artist or album name..."
+              @bind="mbSearchQuery"
+              @bind:event="oninput"
+              @onkeydown="HandleMbSearchKeyDown"
+              id="input-mb-search"
+            />
+            <button
+              class="btn-primary-compact"
+              @onclick="SearchMusicBrainz"
+              disabled="@isSearchingMb"
+            >
+              @if (isSearchingMb)
+              {
+                <span class="btn-spinner"></span>
+                <span>Searching...</span>
+              }
+              else
+              {
+                <span>🔍 Search</span>
+              }
+            </button>
+          </div>
+
+          @if (isSearchingMb)
+          {
+            <div class="mb-loading-state">
+              <div class="mini-spinner"></div>
+              <span>Searching MusicBrainz repository...</span>
+            </div>
+          }
+          else if (mbSearchResults.Count > 0)
+          {
+            <div class="mb-results-list">
+              <div class="mb-results-header">
+                <span>Select a match to auto-populate metadata & cover art:</span>
+              </div>
+              @foreach (var res in mbSearchResults)
+              {
+                <div
+                  class="mb-result-item @(newMusicBrainzId == res.Id ? "selected" : "")"
+                  @onclick="() => SelectMusicBrainzRelease(res)"
+                >
+                  <div class="mb-thumb" style="background: @GetAlbumGradient(res.Title)">
+                    @if (res.HasCoverArt || !string.IsNullOrEmpty(res.CoverArtUrl))
+                    {
+                      <img
+                        src="@res.CoverArtUrl"
+                        alt="@res.Title cover"
+                        class="mb-thumb-img"
+                        loading="lazy"
+                        onerror="this.style.display='none';"
+                      />
+                    }
+                    <span class="mb-thumb-initial">@res.Title.FirstOrDefault()</span>
+                  </div>
+                  <div class="mb-info">
+                    <div class="mb-release-title">@res.Title</div>
+                    <div class="mb-release-artist">@res.Artist</div>
+                    <div class="mb-release-meta">
+                      @if (!string.IsNullOrEmpty(res.Date))
+                      {
+                        <span class="meta-tag">📅 @res.Date</span>
+                      }
+                      @if (!string.IsNullOrEmpty(res.Country))
+                      {
+                        <span class="meta-tag">🌍 @res.Country</span>
+                      }
+                      @if (!string.IsNullOrEmpty(res.Disambiguation))
+                      {
+                        <span class="meta-tag">ℹ️ @res.Disambiguation</span>
+                      }
+                    </div>
+                  </div>
+                  <button class="mb-select-btn">
+                    @(newMusicBrainzId == res.Id ? "✓ Selected" : "Select")
+                  </button>
+                </div>
+              }
+            </div>
+          }
+          else if (hasSearchedMb && !isSearchingMb)
+          {
+            <div class="mb-empty-state">
+              <span>No direct MusicBrainz matches found. You can enter album details manually below.</span>
+            </div>
+          }
+        </div>
+
+        <!-- Step 2: Album Details Form -->
+        <div class="form-section">
+          <label class="section-label">2. Album Details</label>
+
+          @if (!string.IsNullOrEmpty(newMusicBrainzId))
+          {
+            <div class="selected-mb-preview">
+              <div class="selected-mb-cover" style="background: @GetAlbumGradient(newTitle)">
+                <img
+                  src="https://coverartarchive.org/release/@newMusicBrainzId/front-250.jpg"
+                  alt="Cover preview"
+                  class="selected-mb-img"
+                  onerror="this.style.display='none';"
+                />
+                <span class="album-initial">@newTitle.FirstOrDefault()</span>
+              </div>
+              <div class="selected-mb-details">
+                <span class="selected-mb-badge">MusicBrainz Linked</span>
+                <span class="selected-mb-id">MBID: @newMusicBrainzId</span>
+                <button class="btn-text-danger" @onclick="ClearMusicBrainzSelection">Remove Link</button>
+              </div>
+            </div>
+          }
+
+          <div class="form-group">
+            <label for="new-album-title" class="form-label">Album Title *</label>
+            <input
+              id="new-album-title"
+              type="text"
+              class="form-input"
+              placeholder="e.g. Dark Side of the Moon"
+              @bind="newTitle"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="new-album-artist" class="form-label">Artist *</label>
+            <input
+              id="new-album-artist"
+              type="text"
+              class="form-input"
+              placeholder="e.g. Pink Floyd"
+              @bind="newArtist"
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Collection Status</label>
+            <div class="status-pill-selector">
+              @foreach (var s in new[] { "Owned", "Wanted", "Upgrade wanted" })
+              {
+                <button
+                  type="button"
+                  class="status-pill @(newStatus == s ? "active " + s.ToLower().Replace(" ", "-") : "")"
+                  @onclick="() => newStatus = s"
+                >
+                  @s
+                </button>
+              }
+            </div>
+          </div>
+
+          @if (newStatus != "Upgrade wanted")
+          {
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label class="form-label">Vinyl Condition (@(newVinylCondition ?? 0)/5)</label>
+                <div class="interactive-stars">
+                  @for (int i = 1; i <= 5; i++)
+                  {
+                    var val = i;
+                    <button
+                      type="button"
+                      class="star-btn @(newVinylCondition >= val ? "filled" : "")"
+                      @onclick="() => newVinylCondition = val"
+                    >★</button>
+                  }
+                </div>
+              </div>
+
+              <div class="form-group flex-1">
+                <label class="form-label">Cover Condition (@(newCoverCondition ?? 0)/5)</label>
+                <div class="interactive-stars">
+                  @for (int i = 1; i <= 5; i++)
+                  {
+                    var val = i;
+                    <button
+                      type="button"
+                      class="star-btn @(newCoverCondition >= val ? "filled" : "")"
+                      @onclick="() => newCoverCondition = val"
+                    >★</button>
+                  }
+                </div>
+              </div>
+            </div>
+          }
+
+          @if (!string.IsNullOrEmpty(createError))
+          {
+            <div class="form-error-msg">@createError</div>
+          }
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="modal-btn secondary" @onclick="CloseAddModal">Cancel</button>
+        <button class="modal-btn primary" @onclick="SaveNewAlbumAsync" disabled="@isSaving">
+          @(isSaving ? "Saving..." : "Save Album")
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ========================================================================= -->
+<!-- ALBUM DETAIL & EDIT MODAL -->
+<!-- ========================================================================= -->
+@if (showDetailModal && selectedAlbum != null)
+{
+  <div class="modal-overlay" @onclick="CloseDetailModal">
+    <div class="modal-card modal-lg" @onclick:stopPropagation="true">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-title-icon">@(isEditMode ? "✏️" : "🎵")</span>
+          <h2>@(isEditMode ? "Edit Album" : "Album Details")</h2>
+        </div>
+        <button class="close-modal-btn" @onclick="CloseDetailModal" aria-label="Close">✕</button>
+      </div>
+
+      <div class="modal-body">
+        @if (!isEditMode)
+        {
+          <!-- DETAIL VIEW MODE -->
+          <div class="album-detail-view">
+            <div class="detail-hero">
+              <div class="detail-cover-large" style="background: @GetAlbumGradient(selectedAlbum.Title)">
+                @if (!string.IsNullOrEmpty(selectedAlbum.MusicBrainzId))
+                {
+                  <img
+                    src="https://coverartarchive.org/release/@selectedAlbum.MusicBrainzId/front-500.jpg"
+                    alt="@selectedAlbum.Title cover art"
+                    class="detail-cover-img"
+                    onerror="this.style.display='none';"
+                  />
+                }
+                <div class="detail-vinyl-peek"></div>
+                <div class="detail-initial">@selectedAlbum.Title.FirstOrDefault()</div>
+              </div>
+
+              <div class="detail-meta">
+                <span class="status-badge @(selectedAlbum.Status.ToLower().Replace(" ", "-"))">
+                  @selectedAlbum.Status
+                </span>
+                <h1 class="detail-title">@selectedAlbum.Title</h1>
+                <h2 class="detail-artist">@selectedAlbum.Artist</h2>
+
+                @if (!string.IsNullOrEmpty(selectedAlbum.MusicBrainzId))
+                {
+                  <div class="detail-mbid-box">
+                    <span class="mb-icon">🌐</span>
+                    <span class="mb-label">MusicBrainz ID:</span>
+                    <span class="mb-value">@selectedAlbum.MusicBrainzId</span>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <!-- Conditions Section -->
+            @if (selectedAlbum.Status != "Upgrade wanted")
+            {
+              <div class="detail-conditions-grid">
+                <div class="condition-box">
+                  <span class="condition-box-label">Vinyl Condition</span>
+                  <div class="condition-box-stars">
+                    @for (int i = 0; i < 5; i++)
+                    {
+                      var idx = i;
+                      <span class="star-lg @(selectedAlbum.VinylCondition.HasValue && idx < selectedAlbum.VinylCondition.Value ? "filled" : "")">★</span>
+                    }
+                  </div>
+                  <span class="condition-box-text">@(selectedAlbum.VinylCondition.HasValue ? $"{selectedAlbum.VinylCondition.Value}/5" : "Unrated")</span>
+                </div>
+
+                <div class="condition-box">
+                  <span class="condition-box-label">Cover Condition</span>
+                  <div class="condition-box-stars">
+                    @for (int i = 0; i < 5; i++)
+                    {
+                      var idx = i;
+                      <span class="star-lg @(selectedAlbum.CoverCondition.HasValue && idx < selectedAlbum.CoverCondition.Value ? "filled" : "")">★</span>
+                    }
+                  </div>
+                  <span class="condition-box-text">@(selectedAlbum.CoverCondition.HasValue ? $"{selectedAlbum.CoverCondition.Value}/5" : "Unrated")</span>
+                </div>
+              </div>
+            }
+            else
+            {
+              <div class="detail-upgrade-banner">
+                <span>⚡ Marked for upgrade: condition ratings currently hidden.</span>
+              </div>
+            }
+
+            @if (showDeleteConfirm)
+            {
+              <div class="delete-confirm-box">
+                <p>Are you sure you want to remove <strong>@selectedAlbum.Title</strong> from your collection?</p>
+                <div class="delete-confirm-actions">
+                  <button class="modal-btn secondary" @onclick="() => showDeleteConfirm = false">Cancel</button>
+                  <button class="modal-btn danger" @onclick="DeleteAlbumAsync" disabled="@isSaving">
+                    @(isSaving ? "Deleting..." : "Yes, Delete")
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
+        }
+        else
+        {
+          <!-- EDIT MODE -->
+          <div class="album-edit-form">
+            <!-- MusicBrainz Link & Search in Edit Mode -->
+            <div class="form-section">
+              <div class="edit-mb-header">
+                <label class="section-label">MusicBrainz & Cover Art</label>
+                <button
+                  type="button"
+                  class="btn-text-primary"
+                  @onclick="ToggleEditMbSearch"
+                >
+                  @(showEditMbSearch ? "Hide Search" : "Search MusicBrainz to update artwork")
+                </button>
+              </div>
+
+              @if (showEditMbSearch)
+              {
+                <div class="mb-search-box">
+                  <input
+                    type="text"
+                    class="form-input"
+                    placeholder="Search MusicBrainz release..."
+                    @bind="editMbSearchQuery"
+                    @bind:event="oninput"
+                    @onkeydown="HandleEditMbSearchKeyDown"
+                  />
+                  <button
+                    class="btn-primary-compact"
+                    @onclick="SearchMusicBrainzForEdit"
+                    disabled="@isSearchingMb"
+                  >
+                    🔍 Search
+                  </button>
+                </div>
+
+                @if (isSearchingMb)
+                {
+                  <div class="mb-loading-state">
+                    <div class="mini-spinner"></div>
+                    <span>Searching MusicBrainz...</span>
+                  </div>
+                }
+                else if (editMbSearchResults.Count > 0)
+                {
+                  <div class="mb-results-list">
+                    @foreach (var res in editMbSearchResults)
+                    {
+                      <div
+                        class="mb-result-item @(editMusicBrainzId == res.Id ? "selected" : "")"
+                        @onclick="() => SelectMusicBrainzReleaseForEdit(res)"
+                      >
+                        <div class="mb-thumb" style="background: @GetAlbumGradient(res.Title)">
+                          @if (res.HasCoverArt || !string.IsNullOrEmpty(res.CoverArtUrl))
+                          {
+                            <img
+                              src="@res.CoverArtUrl"
+                              alt="@res.Title cover"
+                              class="mb-thumb-img"
+                              loading="lazy"
+                              onerror="this.style.display='none';"
+                            />
+                          }
+                          <span class="mb-thumb-initial">@res.Title.FirstOrDefault()</span>
+                        </div>
+                        <div class="mb-info">
+                          <div class="mb-release-title">@res.Title</div>
+                          <div class="mb-release-artist">@res.Artist</div>
+                          <div class="mb-release-meta">
+                            @if (!string.IsNullOrEmpty(res.Date)) { <span class="meta-tag">📅 @res.Date</span> }
+                            @if (!string.IsNullOrEmpty(res.Country)) { <span class="meta-tag">🌍 @res.Country</span> }
+                          </div>
+                        </div>
+                        <button class="mb-select-btn">
+                          @(editMusicBrainzId == res.Id ? "✓ Selected" : "Select")
+                        </button>
+                      </div>
+                    }
+                  </div>
+                }
+              }
+
+              @if (!string.IsNullOrEmpty(editMusicBrainzId))
+              {
+                <div class="selected-mb-preview">
+                  <div class="selected-mb-cover" style="background: @GetAlbumGradient(editTitle)">
+                    <img
+                      src="https://coverartarchive.org/release/@editMusicBrainzId/front-250.jpg"
+                      alt="Cover preview"
+                      class="selected-mb-img"
+                      onerror="this.style.display='none';"
+                    />
+                    <span class="album-initial">@editTitle.FirstOrDefault()</span>
+                  </div>
+                  <div class="selected-mb-details">
+                    <span class="selected-mb-badge">Cover Art Linked</span>
+                    <span class="selected-mb-id">MBID: @editMusicBrainzId</span>
+                    <button class="btn-text-danger" @onclick="() => editMusicBrainzId = null">Clear Link</button>
+                  </div>
+                </div>
+              }
+            </div>
+
+            <!-- Form inputs -->
+            <div class="form-group">
+              <label for="edit-title" class="form-label">Album Title *</label>
+              <input
+                id="edit-title"
+                type="text"
+                class="form-input"
+                @bind="editTitle"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="edit-artist" class="form-label">Artist *</label>
+              <input
+                id="edit-artist"
+                type="text"
+                class="form-input"
+                @bind="editArtist"
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Status</label>
+              <div class="status-pill-selector">
+                @foreach (var s in new[] { "Owned", "Wanted", "Upgrade wanted" })
+                {
+                  <button
+                    type="button"
+                    class="status-pill @(editStatus == s ? "active " + s.ToLower().Replace(" ", "-") : "")"
+                    @onclick="() => editStatus = s"
+                  >
+                    @s
+                  </button>
+                }
+              </div>
+            </div>
+
+            @if (editStatus != "Upgrade wanted")
+            {
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label class="form-label">Vinyl Condition (@(editVinylCondition ?? 0)/5)</label>
+                  <div class="interactive-stars">
+                    @for (int i = 1; i <= 5; i++)
+                    {
+                      var val = i;
+                      <button
+                        type="button"
+                        class="star-btn @(editVinylCondition >= val ? "filled" : "")"
+                        @onclick="() => editVinylCondition = val"
+                      >★</button>
+                    }
+                  </div>
+                </div>
+
+                <div class="form-group flex-1">
+                  <label class="form-label">Cover Condition (@(editCoverCondition ?? 0)/5)</label>
+                  <div class="interactive-stars">
+                    @for (int i = 1; i <= 5; i++)
+                    {
+                      var val = i;
+                      <button
+                        type="button"
+                        class="star-btn @(editCoverCondition >= val ? "filled" : "")"
+                        @onclick="() => editCoverCondition = val"
+                      >★</button>
+                    }
+                  </div>
+                </div>
+              </div>
+            }
+
+            @if (!string.IsNullOrEmpty(editError))
+            {
+              <div class="form-error-msg">@editError</div>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="modal-footer">
+        @if (!isEditMode)
+        {
+          @if (!showDeleteConfirm)
+          {
+            <button class="modal-btn danger-outline" @onclick="() => showDeleteConfirm = true">
+              🗑 Delete
+            </button>
+            <div class="modal-footer-right">
+              <button class="modal-btn secondary" @onclick="CloseDetailModal">Close</button>
+              <button class="modal-btn primary" @onclick="StartEditAlbum">
+                ✏️ Edit Album
+              </button>
+            </div>
+          }
+        }
+        else
+        {
+          <button class="modal-btn secondary" @onclick="CancelEdit">Cancel</button>
+          <button class="modal-btn primary" @onclick="SaveAlbumEditsAsync" disabled="@isSaving">
+            @(isSaving ? "Saving..." : "Save Changes")
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+}
+
+@code {
+    private List<Album> albums = new();
+    private int totalCount = 0;
+    private bool isLoading = true;
+    private string? errorMsg = null;
+
+    private string _searchQuery = "";
+    private string SearchQuery
+    {
+        get => _searchQuery;
+        set
+        {
+            if (_searchQuery != value)
+            {
+                _searchQuery = value;
+                currentPage = 1;
+                _ = LoadDataAsync();
+            }
+        }
+    }
+
+    private string _statusFilter = "All";
+    private string StatusFilter
+    {
+        get => _statusFilter;
+        set
+        {
+            if (_statusFilter != value)
+            {
+                _statusFilter = value;
+                currentPage = 1;
+                _ = LoadDataAsync();
+            }
+        }
+    }
+
+    private int currentPage = 1;
+
+    private int _pageSize = 10;
+    private int PageSize
+    {
+        get => _pageSize;
+        set
+        {
+            if (_pageSize != value)
+            {
+                _pageSize = value;
+                currentPage = 1;
+                _ = LoadDataAsync();
+            }
+        }
+    }
+
+    private int totalPages => (int)Math.Ceiling((double)totalCount / PageSize);
+
+    // Toast State
+    private string? toastMessage = null;
+    private string toastType = "success";
+
+    // Add Album Modal State
+    private bool showAddModal = false;
+    private string mbSearchQuery = "";
+    private bool isSearchingMb = false;
+    private bool hasSearchedMb = false;
+    private List<MusicBrainzReleaseItem> mbSearchResults = new();
+    private string newTitle = "";
+    private string newArtist = "";
+    private string newStatus = "Owned";
+    private int? newVinylCondition = 5;
+    private int? newCoverCondition = 5;
+    private string? newMusicBrainzId = null;
+    private string? createError = null;
+    private bool isSaving = false;
+
+    // Detail & Edit Modal State
+    private bool showDetailModal = false;
+    private bool isEditMode = false;
+    private Album? selectedAlbum = null;
+    private string editTitle = "";
+    private string editArtist = "";
+    private string editStatus = "Owned";
+    private int? editVinylCondition = null;
+    private int? editCoverCondition = null;
+    private string? editMusicBrainzId = null;
+    private string? editError = null;
+    private bool showDeleteConfirm = false;
+
+    // MusicBrainz Search within Edit
+    private bool showEditMbSearch = false;
+    private string editMbSearchQuery = "";
+    private List<MusicBrainzReleaseItem> editMbSearchResults = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await DbService.InitializeAsync();
+            await LoadDataAsync();
+            isLoading = false;
+        }
+        catch (Exception ex)
+        {
+            errorMsg = $"Failed to load database: {ex.Message}";
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            var result = await DbService.QueryAlbumsAsync(SearchQuery, StatusFilter, currentPage, PageSize);
+            albums = result.Albums;
+            totalCount = result.TotalCount;
+        }
+        catch (Exception ex)
+        {
+            errorMsg = $"Query error: {ex.Message}";
+        }
+    }
+
+    private string GetAlbumGradient(string? title)
+    {
+        if (string.IsNullOrEmpty(title)) return "linear-gradient(135deg, #6366f1, #a855f7)";
+        int hash = 0;
+        for (int i = 0; i < title.Length; i++)
+        {
+            hash = title[i] + ((hash << 5) - hash);
+        }
+        int hue1 = Math.Abs(hash % 360);
+        int hue2 = (hue1 + 40) % 360;
+        return $"linear-gradient(135deg, hsl({hue1}, 75%, 60%), hsl({hue2}, 85%, 45%))";
+    }
+
+    private void ClearSearch()
+    {
+        SearchQuery = "";
+    }
+
+    private async Task NextPage()
+    {
+        if (currentPage < totalPages)
+        {
+            currentPage++;
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task PrevPage()
+    {
+        if (currentPage > 1)
+        {
+            currentPage--;
+            await LoadDataAsync();
+        }
+    }
+
+    // =========================================================================
+    // ADD ALBUM FLOW
+    // =========================================================================
+    private void OpenAddModal()
+    {
+        mbSearchQuery = "";
+        mbSearchResults.Clear();
+        hasSearchedMb = false;
+        newTitle = "";
+        newArtist = "";
+        newStatus = "Owned";
+        newVinylCondition = 5;
+        newCoverCondition = 5;
+        newMusicBrainzId = null;
+        createError = null;
+        isSaving = false;
+        showAddModal = true;
+    }
+
+    private void CloseAddModal()
+    {
+        showAddModal = false;
+    }
+
+    private async Task HandleMbSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SearchMusicBrainz();
+        }
+    }
+
+    private async Task SearchMusicBrainz()
+    {
+        if (string.IsNullOrWhiteSpace(mbSearchQuery)) return;
+
+        isSearchingMb = true;
+        hasSearchedMb = true;
+        mbSearchResults.Clear();
+        StateHasChanged();
+
+        try
+        {
+            mbSearchResults = await MbService.SearchReleasesAsync(mbSearchQuery, limit: 12);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"MB search error: {ex.Message}");
+        }
+        finally
+        {
+            isSearchingMb = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SelectMusicBrainzRelease(MusicBrainzReleaseItem release)
+    {
+        newTitle = release.Title;
+        newArtist = release.Artist;
+        newMusicBrainzId = release.Id;
+        createError = null;
+    }
+
+    private void ClearMusicBrainzSelection()
+    {
+        newMusicBrainzId = null;
+    }
+
+    private async Task SaveNewAlbumAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newTitle))
+        {
+            createError = "Please enter an album title.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(newArtist))
+        {
+            createError = "Please enter an artist name.";
+            return;
+        }
+
+        isSaving = true;
+        createError = null;
+
+        try
+        {
+            var album = new Album
+            {
+                Title = newTitle.Trim(),
+                Artist = newArtist.Trim(),
+                Status = newStatus,
+                VinylCondition = newStatus == "Upgrade wanted" ? null : newVinylCondition,
+                CoverCondition = newStatus == "Upgrade wanted" ? null : newCoverCondition,
+                MusicBrainzId = newMusicBrainzId
+            };
+
+            await DbService.AddAlbumAsync(album);
+            showAddModal = false;
+            ShowToast($"\"{album.Title}\" added to collection!");
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            createError = $"Error saving album: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    // =========================================================================
+    // ALBUM DETAIL & EDIT FLOW
+    // =========================================================================
+    private void OpenAlbumDetails(Album album)
+    {
+        selectedAlbum = album;
+        isEditMode = false;
+        showDeleteConfirm = false;
+        showEditMbSearch = false;
+        showDetailModal = true;
+    }
+
+    private void CloseDetailModal()
+    {
+        showDetailModal = false;
+        isEditMode = false;
+        showDeleteConfirm = false;
+    }
+
+    private void StartEditAlbum()
+    {
+        if (selectedAlbum == null) return;
+        editTitle = selectedAlbum.Title;
+        editArtist = selectedAlbum.Artist;
+        editStatus = selectedAlbum.Status;
+        editVinylCondition = selectedAlbum.VinylCondition ?? 5;
+        editCoverCondition = selectedAlbum.CoverCondition ?? 5;
+        editMusicBrainzId = selectedAlbum.MusicBrainzId;
+        editMbSearchQuery = $"{selectedAlbum.Title} {selectedAlbum.Artist}".Trim();
+        editMbSearchResults.Clear();
+        showEditMbSearch = false;
+        editError = null;
+        isEditMode = true;
+    }
+
+    private void CancelEdit()
+    {
+        isEditMode = false;
+        showEditMbSearch = false;
+    }
+
+    private void ToggleEditMbSearch()
+    {
+        showEditMbSearch = !showEditMbSearch;
+        if (showEditMbSearch && editMbSearchResults.Count == 0 && !string.IsNullOrWhiteSpace(editMbSearchQuery))
+        {
+            _ = SearchMusicBrainzForEdit();
+        }
+    }
+
+    private async Task HandleEditMbSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SearchMusicBrainzForEdit();
+        }
+    }
+
+    private async Task SearchMusicBrainzForEdit()
+    {
+        if (string.IsNullOrWhiteSpace(editMbSearchQuery)) return;
+
+        isSearchingMb = true;
+        editMbSearchResults.Clear();
+        StateHasChanged();
+
+        try
+        {
+            editMbSearchResults = await MbService.SearchReleasesAsync(editMbSearchQuery, limit: 8);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"MB search edit error: {ex.Message}");
+        }
+        finally
+        {
+            isSearchingMb = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SelectMusicBrainzReleaseForEdit(MusicBrainzReleaseItem item)
+    {
+        editTitle = item.Title;
+        editArtist = item.Artist;
+        editMusicBrainzId = item.Id;
+        showEditMbSearch = false;
+    }
+
+    private async Task SaveAlbumEditsAsync()
+    {
+        if (selectedAlbum == null) return;
+
+        if (string.IsNullOrWhiteSpace(editTitle))
+        {
+            editError = "Please enter an album title.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(editArtist))
+        {
+            editError = "Please enter an artist name.";
+            return;
+        }
+
+        isSaving = true;
+        editError = null;
+
+        try
+        {
+            selectedAlbum.Title = editTitle.Trim();
+            selectedAlbum.Artist = editArtist.Trim();
+            selectedAlbum.Status = editStatus;
+            selectedAlbum.VinylCondition = editStatus == "Upgrade wanted" ? null : editVinylCondition;
+            selectedAlbum.CoverCondition = editStatus == "Upgrade wanted" ? null : editCoverCondition;
+            selectedAlbum.MusicBrainzId = editMusicBrainzId;
+
+            await DbService.UpdateAlbumAsync(selectedAlbum);
+            isEditMode = false;
+            ShowToast("Album updated successfully!");
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            editError = $"Error updating album: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task DeleteAlbumAsync()
+    {
+        if (selectedAlbum == null) return;
+
+        isSaving = true;
+        try
+        {
+            var title = selectedAlbum.Title;
+            await DbService.DeleteAlbumAsync(selectedAlbum.Id);
+            showDetailModal = false;
+            ShowToast($"Deleted \"{title}\"");
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"Delete failed: {ex.Message}", "error");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ShowToast(string message, string type = "success")
+    {
+        toastMessage = message;
+        toastType = type;
+        StateHasChanged();
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(3500);
+            toastMessage = null;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private void ReloadApp()
+    {
+        errorMsg = null;
+        isLoading = true;
+        StateHasChanged();
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await DbService.InitializeAsync();
+                await LoadDataAsync();
+            }
+            catch (Exception ex)
+            {
+                errorMsg = $"Failed to load database: {ex.Message}";
+            }
+            finally
+            {
+                isLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+    }
+}
