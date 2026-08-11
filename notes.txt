@@ -1,0 +1,46 @@
+https://learn.microsoft.com/en-us/dotnet/maui/user-interface/images/app-icons?view=net-maui-10.0&tabs=windows
+
+
+
+D:\Projects\SleeveArchive\Resources\AppIcon\appiconfg.svg
+	<svg width="456" height="456" viewBox="0 0 456 456" version="1.1" ...
+	
+D:\Projects\SleeveArchive\Resources\AppIcon\appicon.svg
+	<svg width="456" height="456" viewBox="0 0 456 456" version="1.1" ...
+	
+D:\Projects\SleeveArchive\Resources\Images\dotnet_bot.svg
+
+D:\Projects\SleeveArchive\Resources\Splash\splash.svg
+	<svg width="456" height="456" viewBox="0 0 456 456" version="1.1" ...
+
+App icon svg is used to generate png icons for target platforms during build
+First try:
+
+<svg width="512" height="512" viewBox="0 0 512 512"
+     xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Background -->
+  <rect x="0" y="0" width="512" height="512" fill="#1E1E2A"/>
+
+  <!-- Sleeve (tilted rectangle) -->
+  <rect x="120" y="140" width="280" height="260"
+        rx="24"
+        fill="#F5F0E6"
+        transform="rotate(-10 260 270)"/>
+
+  <!-- Record (circle emerging from sleeve) -->
+  <circle cx="280" cy="220" r="120" fill="#111111"/>
+
+  <!-- Record label -->
+  <circle cx="280" cy="220" r="36" fill="#F3A93A"/>
+
+  <!-- Small center hole -->
+  <circle cx="280" cy="220" r="8" fill="#FFFFFF"/>
+
+  <!-- Simple highlight on sleeve -->
+  <path d="M150 180 L360 150"
+        stroke="#FFFFFF" stroke-opacity="0.35"
+        stroke-width="8" stroke-linecap="round"/>
+
+</svg>
+
