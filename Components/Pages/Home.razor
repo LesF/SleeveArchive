@@ -144,7 +144,7 @@
                 }
                 <div class="vinyl-sleeve-disk"></div>
                 <div class="sleeve-art-overlay">
-                  <span class="album-initial">@album.Title.FirstOrDefault()</span>
+                  <span class="album-initial">@GetInitial(album.Title)</span>
                 </div>
               </div>
 
@@ -312,7 +312,7 @@
                         onerror="this.style.display='none';"
                       />
                     }
-                    <span class="mb-thumb-initial">@res.Title.FirstOrDefault()</span>
+                    <span class="mb-thumb-initial">@GetInitial(res.Title)</span>
                   </div>
                   <div class="mb-info">
                     <div class="mb-release-title">@res.Title</div>
@@ -361,7 +361,7 @@
                   class="selected-mb-img"
                   onerror="this.style.display='none';"
                 />
-                <span class="album-initial">@newTitle.FirstOrDefault()</span>
+                <span class="album-initial">@GetInitial(newTitle)</span>
               </div>
               <div class="selected-mb-details">
                 <span class="selected-mb-badge">MusicBrainz Linked</span>
@@ -493,7 +493,7 @@
                   />
                 }
                 <div class="detail-vinyl-peek"></div>
-                <div class="detail-initial">@selectedAlbum.Title.FirstOrDefault()</div>
+                <div class="detail-initial">@GetInitial(selectedAlbum?.Title)</div>
               </div>
 
               <div class="detail-meta">
@@ -628,7 +628,7 @@
                               onerror="this.style.display='none';"
                             />
                           }
-                          <span class="mb-thumb-initial">@res.Title.FirstOrDefault()</span>
+                          <span class="mb-thumb-initial">@GetInitial(res.Title)</span>
                         </div>
                         <div class="mb-info">
                           <div class="mb-release-title">@res.Title</div>
@@ -657,7 +657,7 @@
                       class="selected-mb-img"
                       onerror="this.style.display='none';"
                     />
-                    <span class="album-initial">@editTitle.FirstOrDefault()</span>
+                    <span class="album-initial">@GetInitial(editTitle)</span>
                   </div>
                   <div class="selected-mb-details">
                     <span class="selected-mb-badge">Cover Art Linked</span>
@@ -908,6 +908,13 @@
         int hue1 = Math.Abs(hash % 360);
         int hue2 = (hue1 + 40) % 360;
         return $"linear-gradient(135deg, hsl({hue1}, 75%, 60%), hsl({hue2}, 85%, 45%))";
+    }
+
+    private string GetInitial(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return string.Empty;
+        return text[0].ToString();
     }
 
     private void ClearSearch()

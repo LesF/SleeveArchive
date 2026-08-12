@@ -21,7 +21,9 @@ public static class MauiProgram
 
 #if DEBUG
 		builder.Services.AddBlazorWebViewDeveloperTools();
-		builder.Logging.AddDebug();
+		builder.Logging
+			.AddDebug()
+			.SetMinimumLevel(LogLevel.Debug);  // Add this for more detailed logging
 #endif
 
 		return builder.Build();
