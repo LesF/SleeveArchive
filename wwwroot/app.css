@@ -71,14 +71,28 @@
   }
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
 body {
   margin: 0;
   padding: 0;
+  width: 100%;
+  min-height: 100%;
+  background-color: var(--app-bg);
+  overflow-x: hidden;
+}
+
+#app {
+  width: 100%;
   min-height: 100vh;
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  background-color: var(--app-bg);
 }
 
 /* App Layout Container */
@@ -573,6 +587,7 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .album-title {
@@ -582,9 +597,9 @@ body {
   margin: 0;
   color: var(--text-primary);
   line-height: 1.25;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .album-artist {
@@ -592,9 +607,9 @@ body {
   color: var(--text-secondary);
   margin: 2px 0 6px 0;
   font-weight: 500;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Status Badges */
