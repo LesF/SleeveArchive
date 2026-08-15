@@ -108,6 +108,8 @@ body {
   flex-direction: column;
   box-sizing: border-box;
   position: relative;
+  /* Safe-area bottom padding to keep UI elements clear of device navigation bar/gestures */
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 12px));
 }
 
 /* Header Styling */
@@ -752,7 +754,8 @@ body {
   justify-content: center;
   align-items: center;
   z-index: 1000;
-  padding: 16px;
+  /* Extra bottom padding to keep modal contents clear of device navigation bar/gestures */
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 16px)) 16px;
   overflow-y: auto;
 }
 
