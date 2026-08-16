@@ -234,6 +234,36 @@ public class DatabaseService
         return rows > 0;
     }
 
+    public string GetDatabasePath() => _dbPath;
+
+    public async Task BackupDatabaseAsync(string targetFilePath)
+    {
+        SqliteConnection.ClearAllPools();
+
+        var directory = Path.GetDirectoryName(targetFilePath);
+        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        await Task.Run(() => File.Copy(_dbPath, targetFilePath, overwrite: true));
+    }
+
+    public async Task RestoreDatabaseAsync(string sourceFilePath)
+    {
+        if (!File.Exists(sourceFilePath))
+        {
+            throw new FileNotFoundException("Backup file not found.", sourceFilePath);
+        }
+
+        SqliteConnection.ClearAllPools();
+
+        await Task.Run(() => File.Copy(sourceFilePath, _dbPath, overwrite: true));
+
+        // Re-initialize schema validation / migrations
+        await InitializeAsync();
+    }
+
     private SqliteParameter CloneParameter(SqliteParameter original)
     {
         return new SqliteParameter(original.ParameterName, original.Value);

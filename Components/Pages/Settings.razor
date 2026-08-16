@@ -1,0 +1,462 @@
+@page "/settings"
+@using System.IO
+@using SleeveArchive.Services
+@using SleeveArchive.Models
+@inject DatabaseService DbService
+@inject FolderPickerService FolderPicker
+@inject NavigationManager NavigationManager
+
+<div class="settings-container">
+  <div class="settings-header">
+    <button class="back-btn" @onclick="NavigateHome" aria-label="Back to home">
+      <span>←</span> Back to Collection
+    </button>
+    <h2>Settings</h2>
+  </div>
+
+  <!-- Toast Notification -->
+  @if (!string.IsNullOrEmpty(toastMessage))
+  {
+    <div class="toast-banner @toastType">
+      <span class="toast-icon">@(toastType == "success" ? "✓" : "ℹ")</span>
+      <span>@toastMessage</span>
+    </div>
+  }
+
+  <div class="settings-body">
+    <!-- Active Database Status -->
+    <section class="settings-card">
+      <h3>Active Database Info</h3>
+      <div class="db-info-box">
+        <div class="info-row">
+          <span class="info-label">Active Database Location:</span>
+          <span class="info-value text-monospace">@activeDbPath</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Database File Size:</span>
+          <span class="info-value">@activeDbSize</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Configure Backup Directory -->
+    <section class="settings-card">
+      <h3>Backup Location</h3>
+      <p class="section-desc">Select or type the directory where your database backups will be saved.</p>
+      
+      <div class="folder-picker-group">
+        <input 
+          type="text" 
+          class="form-input text-monospace flex-1" 
+          @bind="backupFolder" 
+          @bind:after="OnFolderChanged"
+          placeholder="C:\path\to\backup\directory"
+          id="input-backup-dir"
+        />
+        <button class="btn-secondary-compact font-semibold" @onclick="BrowseFolder" id="btn-browse-folder">
+          📂 Browse...
+        </button>
+      </div>
+      @if (!string.IsNullOrEmpty(folderError))
+      {
+        <div class="form-error-msg">@folderError</div>
+      }
+    </section>
+
+    <!-- Trigger Instant Backup -->
+    <section class="settings-card">
+      <h3>Create Database Backup</h3>
+      <p class="section-desc">Generate a copy of your current database catalog. The default name includes today's date stamp.</p>
+
+      <div class="backup-trigger-group">
+        <div class="form-group flex-1">
+          <label for="backup-filename" class="form-label">Backup Name</label>
+          <div class="input-suffix-wrapper">
+            <input 
+              type="text" 
+              id="backup-filename" 
+              class="form-input text-monospace" 
+              @bind="backupName"
+              placeholder="SleeveArchive_dd-MMM-yy"
+            />
+            <span class="input-suffix">.db</span>
+          </div>
+        </div>
+        <button 
+          class="btn-primary-compact backup-now-btn" 
+          @onclick="PerformBackup" 
+          disabled="@(isBackingUp || string.IsNullOrWhiteSpace(backupFolder))"
+          id="btn-backup-now"
+        >
+          @(isBackingUp ? "Backing up..." : "⚡ Backup Now")
+        </button>
+      </div>
+    </section>
+
+    <!-- Backups List -->
+    <section class="settings-card">
+      <h3>Available Backups (@backupFiles.Count)</h3>
+      <p class="section-desc">Manage historical backups stored in the configured backup directory.</p>
+
+      @if (backupFiles.Count == 0)
+      {
+        <div class="empty-backups-state">
+          <span class="empty-icon">📁</span>
+          <p>No database backup files found in this directory.</p>
+        </div>
+      }
+      else
+      {
+        <div class="backups-table-wrapper">
+          <table class="backups-table">
+            <thead>
+              <tr>
+                <th>Backup File</th>
+                <th>Date Modified</th>
+                <th>Size</th>
+                <th class="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @foreach (var file in backupFiles)
+              {
+                <tr>
+                  <td class="file-name text-monospace" title="@file.Name">@file.Name</td>
+                  <td class="file-date">@file.LastWriteTime.ToString("dd-MMM-yy HH:mm")</td>
+                  <td class="file-size">@FormatBytes(file.Length)</td>
+                  <td class="file-actions text-right">
+                    <button class="action-btn-restore" @onclick="() => ConfirmRestore(file)" title="Restore database from this backup">
+                      ↺ Restore
+                    </button>
+                    <button class="action-btn-delete" @onclick="() => ConfirmDelete(file)" title="Delete backup file">
+                      🗑 Delete
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  </div>
+</div>
+
+<!-- Restoration Modal Confirmation -->
+@if (pendingRestoreFile != null)
+{
+  <div class="modal-overlay" @onclick="CancelRestore">
+    <div class="modal-card modal-md" @onclick:stopPropagation="true">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-title-icon warning">⚠️</span>
+          <h2>Confirm Restore</h2>
+        </div>
+        <button class="close-modal-btn" @onclick="CancelRestore">✕</button>
+      </div>
+      <div class="modal-body text-center">
+        <p class="warning-alert-text">
+          <strong>WARNING:</strong> Restoring will completely overwrite the active catalog database with the contents of:
+        </p>
+        <p class="text-monospace warning-filename">@pendingRestoreFile.Name</p>
+        <p class="warning-detail-text">
+          Any modifications, additions, or updates made after this backup was created (@pendingRestoreFile.LastWriteTime.ToString("dd-MMM-yy HH:mm")) will be lost permanently.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn secondary" @onclick="CancelRestore" disabled="@isRestoring">Cancel</button>
+        <button class="modal-btn danger" @onclick="ExecuteRestore" disabled="@isRestoring">
+          @(isRestoring ? "Restoring..." : "Yes, Restore Database")
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Deletion Modal Confirmation -->
+@if (pendingDeleteFile != null)
+{
+  <div class="modal-overlay" @onclick="CancelDelete">
+    <div class="modal-card modal-md" @onclick:stopPropagation="true">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-title-icon text-danger">🗑</span>
+          <h2>Delete Backup File</h2>
+        </div>
+        <button class="close-modal-btn" @onclick="CancelDelete">✕</button>
+      </div>
+      <div class="modal-body text-center">
+        <p>Are you sure you want to permanently delete the backup file?</p>
+        <p class="text-monospace font-semibold">@pendingDeleteFile.Name</p>
+        <p class="text-secondary text-sm">This action cannot be undone and will delete the file from your disk storage.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn secondary" @onclick="CancelDelete">Cancel</button>
+        <button class="modal-btn danger" @onclick="ExecuteDelete">Confirm Delete</button>
+      </div>
+    </div>
+  </div>
+}
+
+@code {
+    private string activeDbPath = "";
+    private string activeDbSize = "0 B";
+    private string backupFolder = "";
+    private string backupName = "";
+    private string folderError = "";
+
+    // Toast notifications
+    private string? toastMessage = null;
+    private string toastType = "success";
+
+    private List<FileInfo> backupFiles = new();
+    private bool isBackingUp = false;
+    private bool isRestoring = false;
+
+    private FileInfo? pendingRestoreFile = null;
+    private FileInfo? pendingDeleteFile = null;
+
+    protected override void OnInitialized()
+    {
+        // 1. Get current active DB path
+        activeDbPath = DbService.GetDatabasePath();
+        UpdateActiveDbSize();
+
+        // 2. Load configured backup directory (default to My Documents/SleeveArchiveBackups)
+        var defaultFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SleeveArchiveBackups");
+        backupFolder = Preferences.Default.Get("BackupDirectory", defaultFolder);
+
+        // 3. Pre-populate default backup filename (SleeveArchive_dd-MMM-yy)
+        GenerateDefaultBackupName();
+
+        // 4. Scan the backups folder
+        LoadBackupFiles();
+    }
+
+    private void UpdateActiveDbSize()
+    {
+        try
+        {
+            if (File.Exists(activeDbPath))
+            {
+                var info = new FileInfo(activeDbPath);
+                activeDbSize = FormatBytes(info.Length);
+            }
+        }
+        catch (Exception ex)
+        {
+            activeDbSize = $"Unknown ({ex.Message})";
+        }
+    }
+
+    private void GenerateDefaultBackupName()
+    {
+        var datestamp = DateTime.Now.ToString("dd-MMM-yy");
+        backupName = $"SleeveArchive_{datestamp}";
+    }
+
+    private void LoadBackupFiles()
+    {
+        folderError = "";
+        backupFiles.Clear();
+
+        if (string.IsNullOrWhiteSpace(backupFolder))
+        {
+            return;
+        }
+
+        try
+        {
+            if (Directory.Exists(backupFolder))
+            {
+                var dirInfo = new DirectoryInfo(backupFolder);
+                backupFiles = dirInfo.GetFiles("*.db")
+                                     .OrderByDescending(f => f.LastWriteTime)
+                                     .ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            folderError = $"Error reading directory: {ex.Message}";
+        }
+    }
+
+    private void OnFolderChanged()
+    {
+        if (!string.IsNullOrWhiteSpace(backupFolder))
+        {
+            Preferences.Default.Set("BackupDirectory", backupFolder);
+        }
+        LoadBackupFiles();
+    }
+
+    private async Task BrowseFolder()
+    {
+        try
+        {
+            var pickedPath = await FolderPicker.PickFolderAsync();
+            if (!string.IsNullOrEmpty(pickedPath))
+            {
+                backupFolder = pickedPath;
+                Preferences.Default.Set("BackupDirectory", pickedPath);
+                LoadBackupFiles();
+                ShowToast("Backup directory updated successfully!");
+            }
+        }
+        catch (Exception ex)
+        {
+            folderError = $"Folder picker failed: {ex.Message}";
+        }
+    }
+
+    private async Task PerformBackup()
+    {
+        if (string.IsNullOrWhiteSpace(backupFolder))
+        {
+            ShowToast("Please configure a backup directory first.", "error");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(backupName))
+        {
+            ShowToast("Please enter a name for the backup file.", "error");
+            return;
+        }
+
+        isBackingUp = true;
+        StateHasChanged();
+
+        try
+        {
+            // Resolve filename with .db suffix (ensure no double .db)
+            var filename = backupName.Trim();
+            if (!filename.EndsWith(".db", StringComparison.OrdinalIgnoreCase))
+            {
+                filename += ".db";
+            }
+
+            // Create target folder path
+            if (!Directory.Exists(backupFolder))
+            {
+                Directory.CreateDirectory(backupFolder);
+            }
+
+            var destPath = Path.Combine(backupFolder, filename);
+
+            // Execute backup operations
+            await DbService.BackupDatabaseAsync(destPath);
+
+            ShowToast($"Database successfully backed up to \"{filename}\"!");
+            GenerateDefaultBackupName(); // Regenerate name
+            LoadBackupFiles(); // Reload history
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"Backup failed: {ex.Message}", "error");
+        }
+        finally
+        {
+            isBackingUp = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ConfirmRestore(FileInfo file)
+    {
+        pendingRestoreFile = file;
+    }
+
+    private void CancelRestore()
+    {
+        pendingRestoreFile = null;
+        isRestoring = false;
+    }
+
+    private async Task ExecuteRestore()
+    {
+        if (pendingRestoreFile == null) return;
+
+        isRestoring = true;
+        StateHasChanged();
+
+        try
+        {
+            await DbService.RestoreDatabaseAsync(pendingRestoreFile.FullName);
+            ShowToast("Database catalog restored successfully!");
+            UpdateActiveDbSize();
+            pendingRestoreFile = null;
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"Restore failed: {ex.Message}", "error");
+        }
+        finally
+        {
+            isRestoring = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ConfirmDelete(FileInfo file)
+    {
+        pendingDeleteFile = file;
+    }
+
+    private void CancelDelete()
+    {
+        pendingDeleteFile = null;
+    }
+
+    private void ExecuteDelete()
+    {
+        if (pendingDeleteFile == null) return;
+
+        try
+        {
+            if (File.Exists(pendingDeleteFile.FullName))
+            {
+                File.Delete(pendingDeleteFile.FullName);
+                ShowToast($"Deleted backup file \"{pendingDeleteFile.Name}\"");
+            }
+            pendingDeleteFile = null;
+            LoadBackupFiles();
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"Failed to delete file: {ex.Message}", "error");
+        }
+    }
+
+    private void NavigateHome()
+    {
+        NavigationManager.NavigateTo("/");
+    }
+
+    private void ShowToast(string message, string type = "success")
+    {
+        toastMessage = message;
+        toastType = type;
+        StateHasChanged();
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(3500);
+            toastMessage = null;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private string FormatBytes(long bytes)
+    {
+        string[] suffix = { "B", "KB", "MB", "GB", "TB" };
+        int i;
+        double dblByte = bytes;
+        for (i = 0; i < suffix.Length && bytes >= 1024; i++, bytes /= 1024)
+        {
+            dblByte = bytes / 1024.0;
+        }
+        // If it was less than 1024 initially, loop won't run and dblByte should be the raw bytes
+        if (i == 0) dblByte = bytes; 
+        return $"{dblByte:0.##} {suffix[i]}";
+    }
+}

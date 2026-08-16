@@ -109,6 +109,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <PackageReference Include="CommunityToolkit.Maui" Version="15.0.0" />
         <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
         <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.90" />
         <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="10.0.90" />

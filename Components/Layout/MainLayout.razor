@@ -1,3 +1,68 @@
 @inherits LayoutComponentBase
+@inject NavigationManager NavigationManager
 
-@Body
+<main class="app-container">
+  <!-- Shared Top Navigation Bar -->
+  <header class="app-header">
+    <div class="logo-area" @onclick="NavigateHome" style="cursor: pointer;">
+      <div class="record-logo">
+        <div class="vinyl-grooves"></div>
+        <div class="vinyl-center"></div>
+      </div>
+      <h1>SleeveArchive</h1>
+    </div>
+    <div class="header-right">
+      <div class="menu-dropdown-container">
+        <button class="menu-trigger-btn" @onclick="ToggleMenu" aria-label="Menu" id="menu-trigger">
+          <span class="menu-icon">☰</span>
+        </button>
+        @if (isMenuOpen)
+        {
+          <div class="menu-backdrop" @onclick="CloseMenu"></div>
+          <div class="menu-dropdown-list">
+            <button class="menu-item-btn" @onclick="SelectAddAlbum" id="menu-opt-add">
+              <span class="item-icon">＋</span> Add Album
+            </button>
+            <button class="menu-item-btn" @onclick="SelectSettings" id="menu-opt-settings">
+              <span class="item-icon">⚙</span> Settings
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+  </header>
+
+  @Body
+</main>
+
+@code {
+    private bool isMenuOpen = false;
+
+    private void ToggleMenu()
+    {
+        isMenuOpen = !isMenuOpen;
+    }
+
+    private void CloseMenu()
+    {
+        isMenuOpen = false;
+    }
+
+    private void NavigateHome()
+    {
+        NavigationManager.NavigateTo("/");
+        CloseMenu();
+    }
+
+    private void SelectAddAlbum()
+    {
+        NavigationManager.NavigateTo("/?action=add");
+        CloseMenu();
+    }
+
+    private void SelectSettings()
+    {
+        NavigationManager.NavigateTo("/settings");
+        CloseMenu();
+    }
+}

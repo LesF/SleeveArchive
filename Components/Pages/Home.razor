@@ -4,24 +4,7 @@
 @inject DatabaseService DbService
 @inject MusicBrainzService MbService
 @inject IJSRuntime JS
-
-<main class="app-container">
-  <!-- Top Navigation Bar -->
-  <header class="app-header">
-    <div class="logo-area">
-      <div class="record-logo">
-        <div class="vinyl-grooves"></div>
-        <div class="vinyl-center"></div>
-      </div>
-      <h1>SleeveArchive</h1>
-    </div>
-    <div class="header-right">
-      <button class="add-album-header-btn" @onclick="OpenAddModal" aria-label="Add Album" id="btn-add-album">
-        <span class="btn-icon">＋</span>
-        <span>Add Album</span>
-      </button>
-    </div>
-  </header>
+@inject NavigationManager NavigationManager
 
   <!-- Toast Notification -->
   @if (!string.IsNullOrEmpty(toastMessage))
@@ -234,7 +217,6 @@
       }
     </div>
   }
-</main>
 
 <!-- ========================================================================= -->
 <!-- ADD ALBUM MODAL (with MusicBrainz search & Cover Art selection) -->
@@ -507,8 +489,10 @@
                 {
                   <div class="detail-mbid-box">
                     <span class="mb-icon">🌐</span>
-                    <span class="mb-label">MusicBrainz ID:</span>
-                    <span class="mb-value">@selectedAlbum.MusicBrainzId</span>
+                    <span class="mb-label">MusicBrainz:</span>
+                    <button class="mb-link-btn" title="Open MusicBrainz release page" @onclick="() => OpenMusicBrainzExternal(selectedAlbum.MusicBrainzId)">
+                      View Release ↗
+                    </button>
                   </div>
                 }
               </div>
@@ -777,6 +761,18 @@
 }
 
 @code {
+    [SupplyParameterFromQuery(Name = "action")]
+    public string? Action { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Action == "add")
+        {
+            OpenAddModal();
+            NavigationManager.NavigateTo("/", replace: true);
+        }
+    }
+
     private List<Album> albums = new();
     private int totalCount = 0;
     private bool isLoading = true;
@@ -1220,6 +1216,21 @@
             toastMessage = null;
             await InvokeAsync(StateHasChanged);
         });
+    }
+
+    private async Task OpenMusicBrainzExternal(string? mbid)
+    {
+        if (!string.IsNullOrEmpty(mbid))
+        {
+            try
+            {
+                await Microsoft.Maui.ApplicationModel.Launcher.Default.OpenAsync($"https://musicbrainz.org/release/{mbid.Trim()}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error launching browser: {ex.Message}");
+            }
+        }
     }
 
     private void ReloadApp()
