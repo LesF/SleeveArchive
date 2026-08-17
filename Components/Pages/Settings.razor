@@ -24,6 +24,57 @@
   }
 
   <div class="settings-body">
+    @if (!string.IsNullOrEmpty(DbError))
+    {
+      <section class="settings-card db-error-card">
+        <div class="db-error-header">
+          <span class="error-badge-icon">⚠️</span>
+          <div>
+            <h3 class="error-title">
+              @if (DbError == "missing")
+              {
+                <span>Database File Not Found</span>
+              }
+              else if (DbError == "corrupt")
+              {
+                <span>Database File Corrupted</span>
+              }
+              else
+              {
+                <span>Database Error Detected</span>
+              }
+            </h3>
+            <p class="error-desc">
+              @if (DbError == "missing")
+              {
+                <span>The database file could not be found at its expected location. This can happen if the database was deleted or moved.</span>
+              }
+              else if (DbError == "corrupt")
+              {
+                <span>The database file exists but is corrupted or has an invalid format. It cannot be opened or queried.</span>
+              }
+              else
+              {
+                <span>An unexpected issue is preventing the application from opening the database.</span>
+              }
+            </p>
+          </div>
+        </div>
+
+        <div class="recovery-actions-box">
+          <p class="action-box-instructions">To recover your collection, you can restore from a backup file or initialize a clean database.</p>
+          <div class="recovery-buttons">
+            <button class="btn-primary-compact restore-file-btn" @onclick="PickAndRestoreBackup" id="btn-restore-custom-file">
+              📂 Restore from file...
+            </button>
+            <button class="btn-danger-compact initialize-fresh-btn" @onclick="ConfirmCreateFresh" id="btn-init-fresh-db">
+              ⚡ Initialize Fresh Database
+            </button>
+          </div>
+        </div>
+      </section>
+    }
+
     <!-- Active Database Status -->
     <section class="settings-card">
       <h3>Active Database Info</h3>
@@ -198,9 +249,77 @@
   </div>
 }
 
+<!-- Custom Restoration Modal Confirmation -->
+@if (pendingCustomRestorePath != null)
+{
+  <div class="modal-overlay" @onclick="CancelCustomRestore">
+    <div class="modal-card modal-md" @onclick:stopPropagation="true">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-title-icon warning">⚠️</span>
+          <h2>Confirm Restore</h2>
+        </div>
+        <button class="close-modal-btn" @onclick="CancelCustomRestore">✕</button>
+      </div>
+      <div class="modal-body text-center">
+        <p class="warning-alert-text">
+          <strong>WARNING:</strong> Restoring will completely overwrite the active catalog database with the contents of:
+        </p>
+        <p class="text-monospace warning-filename">@pendingCustomRestoreName</p>
+        <p class="warning-detail-text">
+          This will replace your current database with the selected backup file. All current database modifications will be lost permanently.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn secondary" @onclick="CancelCustomRestore" disabled="@isRestoring">Cancel</button>
+        <button class="modal-btn danger" @onclick="ExecuteCustomRestore" disabled="@isRestoring" id="btn-confirm-custom-restore">
+          @(isRestoring ? "Restoring..." : "Yes, Restore Database")
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Fresh Database Modal Confirmation -->
+@if (showCreateFreshConfirm)
+{
+  <div class="modal-overlay" @onclick="CancelCreateFresh">
+    <div class="modal-card modal-md" @onclick:stopPropagation="true">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-title-icon warning">⚠️</span>
+          <h2>Initialize Fresh Database</h2>
+        </div>
+        <button class="close-modal-btn" @onclick="CancelCreateFresh">✕</button>
+      </div>
+      <div class="modal-body text-center">
+        <p class="warning-alert-text">
+          <strong>WARNING:</strong> This will create a brand new, empty database catalog.
+        </p>
+        <p class="warning-detail-text">
+          Your existing database (if any) will be renamed and backed up with a `.corrupt` extension. All existing albums in your catalog will be removed from the active view.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn secondary" @onclick="CancelCreateFresh" disabled="@isRestoring">Cancel</button>
+        <button class="modal-btn danger" @onclick="ExecuteCreateFresh" disabled="@isRestoring" id="btn-confirm-fresh-db">
+          @(isRestoring ? "Initializing..." : "Yes, Initialize Fresh Database")
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
 @code {
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "dbError")]
+    public string? DbError { get; set; }
+
     private string activeDbPath = "";
     private string activeDbSize = "0 B";
+    private string? pendingCustomRestorePath = null;
+    private string? pendingCustomRestoreName = null;
+    private bool showCreateFreshConfirm = false;
     private string backupFolder = "";
     private string backupName = "";
     private string folderError = "";
@@ -385,10 +504,118 @@
             ShowToast("Database catalog restored successfully!");
             UpdateActiveDbSize();
             pendingRestoreFile = null;
+
+            if (!string.IsNullOrEmpty(DbError))
+            {
+                NavigationManager.NavigateTo("/");
+            }
         }
         catch (Exception ex)
         {
             ShowToast($"Restore failed: {ex.Message}", "error");
+        }
+        finally
+        {
+            isRestoring = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelCustomRestore()
+    {
+        pendingCustomRestorePath = null;
+        pendingCustomRestoreName = null;
+        isRestoring = false;
+    }
+
+    private async Task ExecuteCustomRestore()
+    {
+        if (pendingCustomRestorePath == null) return;
+
+        isRestoring = true;
+        StateHasChanged();
+
+        try
+        {
+            await DbService.RestoreDatabaseAsync(pendingCustomRestorePath);
+            ShowToast("Database catalog restored successfully!");
+            UpdateActiveDbSize();
+            pendingCustomRestorePath = null;
+            pendingCustomRestoreName = null;
+
+            if (!string.IsNullOrEmpty(DbError))
+            {
+                NavigationManager.NavigateTo("/");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"Restore failed: {ex.Message}", "error");
+        }
+        finally
+        {
+            isRestoring = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task PickAndRestoreBackup()
+    {
+        try
+        {
+            var customFileType = new FilePickerFileType(
+                new Dictionary<DevicePlatform, IEnumerable<string>>
+                {
+                    { DevicePlatform.WinUI, new[] { ".db" } },
+                    { DevicePlatform.Android, new[] { ".db", "application/octet-stream" } },
+                    { DevicePlatform.iOS, new[] { "public.database", "public.data" } },
+                    { DevicePlatform.MacCatalyst, new[] { "public.database", "public.data" } }
+                });
+
+            var result = await FilePicker.Default.PickAsync(new PickOptions
+            {
+                PickerTitle = "Select a database backup (.db) to restore",
+                FileTypes = customFileType
+            });
+
+            if (result != null)
+            {
+                pendingCustomRestorePath = result.FullPath;
+                pendingCustomRestoreName = result.FileName;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"Failed to pick file: {ex.Message}", "error");
+        }
+    }
+
+    private void ConfirmCreateFresh()
+    {
+        showCreateFreshConfirm = true;
+    }
+
+    private void CancelCreateFresh()
+    {
+        showCreateFreshConfirm = false;
+    }
+
+    private async Task ExecuteCreateFresh()
+    {
+        isRestoring = true;
+        StateHasChanged();
+
+        try
+        {
+            await DbService.CreateFreshDatabaseAsync();
+            ShowToast("Fresh database initialized successfully!");
+            showCreateFreshConfirm = false;
+            NavigationManager.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            ShowToast($"Failed to initialize database: {ex.Message}", "error");
         }
         finally
         {

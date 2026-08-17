@@ -1962,3 +1962,99 @@ body {
 .text-secondary {
   color: var(--text-secondary);
 }
+
+/* Database Startup Error/Recovery Card Styling */
+.db-error-card {
+  border: 1.5px solid var(--danger) !important;
+  background-color: hsla(350, 89%, 60%, 0.05) !important;
+  box-shadow: 0 4px 20px rgba(220, 38, 38, 0.15) !important;
+  margin-bottom: 24px;
+}
+
+.db-error-header {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.error-badge-icon {
+  font-size: 32px;
+  line-height: 1;
+  user-select: none;
+}
+
+.error-title {
+  font-family: var(--font-heading);
+  color: var(--danger) !important;
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 6px 0;
+}
+
+.error-desc {
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.recovery-actions-box {
+  padding-top: 16px;
+  border-top: 1px dashed var(--border);
+}
+
+.action-box-instructions {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  margin: 0 0 12px 0;
+}
+
+.recovery-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.btn-primary-compact.restore-file-btn {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  border: none;
+  color: #ffffff;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.btn-primary-compact.restore-file-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px hsla(var(--hue-primary), 83%, 66%, 0.3);
+}
+
+.btn-danger-compact.initialize-fresh-btn {
+  background: var(--danger);
+  border: 1px solid var(--danger);
+  color: #ffffff;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.btn-danger-compact.initialize-fresh-btn:hover {
+  background: var(--danger-hover);
+  border-color: var(--danger-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}

@@ -868,6 +868,13 @@
     {
         try
         {
+            var dbStatus = await DbService.CheckDatabaseStatusAsync();
+            if (dbStatus != DatabaseStatus.Ok)
+            {
+                NavigationManager.NavigateTo($"/settings?dbError={dbStatus.ToString().ToLower()}");
+                return;
+            }
+
             await DbService.InitializeAsync();
             await LoadDataAsync();
             isLoading = false;

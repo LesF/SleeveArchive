@@ -3,6 +3,13 @@ using SleeveArchive.Models;
 
 namespace SleeveArchive.Services;
 
+public enum DatabaseStatus
+{
+    Ok,
+    Missing,
+    Corrupt
+}
+
 public class DatabaseService
 {
     private readonly string _dbPath;
@@ -10,6 +17,35 @@ public class DatabaseService
     public DatabaseService()
     {
         _dbPath = Path.Combine(FileSystem.AppDataDirectory, "music_catalog.db");
+    }
+
+    public async Task<DatabaseStatus> CheckDatabaseStatusAsync()
+    {
+        if (!File.Exists(_dbPath))
+        {
+            var previouslyInitialized = Preferences.Default.Get("HasDatabaseBeenInitialized", false);
+            if (previouslyInitialized)
+            {
+                return DatabaseStatus.Missing;
+            }
+            return DatabaseStatus.Ok;
+        }
+
+        try
+        {
+            using var connection = new SqliteConnection($"Data Source={_dbPath}");
+            await connection.OpenAsync();
+
+            // Run a quick query to verify the tables are intact and queryable
+            using var cmd = new SqliteCommand("SELECT COUNT(*) FROM albums;", connection);
+            await cmd.ExecuteScalarAsync();
+
+            return DatabaseStatus.Ok;
+        }
+        catch
+        {
+            return DatabaseStatus.Corrupt;
+        }
     }
 
     public async Task InitializeAsync()
@@ -31,6 +67,38 @@ public class DatabaseService
 
         // Schema migration check: ensure musicbrainz_id column exists
         await EnsureMusicBrainzColumnExistsAsync();
+
+        // Mark database as successfully initialized in preferences
+        Preferences.Default.Set("HasDatabaseBeenInitialized", true);
+    }
+
+    public async Task CreateFreshDatabaseAsync()
+    {
+        SqliteConnection.ClearAllPools();
+
+        if (File.Exists(_dbPath))
+        {
+            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var renamePath = _dbPath + $".corrupt_{timestamp}";
+            try
+            {
+                File.Move(_dbPath, renamePath);
+            }
+            catch
+            {
+                try
+                {
+                    File.Delete(_dbPath);
+                }
+                catch
+                {
+                    // If even delete fails, let it propagate or fail silently
+                }
+            }
+        }
+
+        // Trigger clean initialization
+        await InitializeAsync();
     }
 
     private async Task EnsureTableCreatedAsync()

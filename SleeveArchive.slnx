@@ -1,5 +1,5 @@
 <Solution>
   <Project Path="SleeveArchive.csproj">
-    <Deploy Solution="Debug|*" />
+    <Deploy />
   </Project>
 </Solution>
